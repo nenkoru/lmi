@@ -11,6 +11,7 @@ class GenerationParameters:
     max_tokens: Union[int, None] = 16
     return_prompt: bool = True
     do_sample: bool = True
+    stop_token: Union[str, None] = None
 
 
 class LMIProtocol(Protocol):

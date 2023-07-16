@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 import uvicorn
 from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 import lmi
@@ -19,15 +20,16 @@ app = FastAPI(
 
 
 class ParametersDTO(BaseModel):
-    top_k: int
-    top_p: float
-    temperature: float
-    repetition_penalty: float
-    max_new_tokens: int
-    max_time: float
-    return_full_text: bool
-    num_return_sequences: int
-    do_sample: bool
+    top_k: int = 1
+    top_p: float = 0.95
+    temperature: float = 1
+    repetition_penalty: float = None
+    max_new_tokens: int = None
+    max_time: float = None
+    return_full_text: bool = True
+    num_return_sequences: int = 1
+    do_sample: bool = True
+    stop_token: Union[str, None] = None
 
 
 class OptionsDTO(BaseModel):
@@ -89,9 +91,12 @@ async def generate(request: RequestDataclass):
             repetition_penalty=request.parameters.repetition_penalty,
             max_tokens=request.parameters.max_new_tokens,
             return_prompt=request.parameters.return_full_text,
-            do_sample=request.parameters.do_sample
+            do_sample=request.parameters.do_sample,
+            stop_token=request.parameters.stop_token
     )
-    return generate_response(inputs=request.inputs, parameters=parameters)
+    generated = generate_response(inputs=request.inputs, parameters=parameters)[0]
+    response = [{"generated_text": request.inputs + generated}]
+    return JSONResponse(response)
 
    
 
@@ -103,6 +108,6 @@ if __name__ == "__main__":
     parser.add_argument("--lmi", type=str)
     args = parser.parse_args()
     lmi_module = importlib.import_module(args.lmi)
-    generate_response = lmi_module.generate
+    generate_response = lmi_module.generator
 
     uvicorn.run(app, host=args.host, port=args.port)
