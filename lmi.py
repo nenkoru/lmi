@@ -13,6 +13,9 @@ class GenerationParameters:
     do_sample: bool = True
     stop_token: Union[str, None] = None
 
+    def __hash__(self):
+        return hash("".join(self.__dict__))
+
 
 class LMIProtocol(Protocol):
     """Stands for Language Model Interface."""

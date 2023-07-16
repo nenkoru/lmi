@@ -1,8 +1,10 @@
 import importlib
 import argparse
+import asyncio
 
-from typing import Union
+from typing import Union, List
 from dataclasses import dataclass
+from collections import Counter
 
 import uvicorn
 from fastapi import FastAPI, Request
@@ -11,6 +13,10 @@ from pydantic import BaseModel
 
 import lmi
 
+
+REQUESTS_BATCH_PROCESS_WINDOWS_SECONDS = 5
+REQUESTS_BATCH_SIZE = 5
+GENERATE_QUEUE = asyncio.Queue()
 
 app = FastAPI(
     title="FastAPI",
@@ -31,10 +37,17 @@ class ParametersDTO(BaseModel):
     do_sample: bool = True
     stop_token: Union[str, None] = None
 
+    def __hash__(self):
+        return hash("".join(self.__dict__))
+
 
 class OptionsDTO(BaseModel):
     use_cache: bool
     wait_for_model: bool
+
+    def __hash__(self):
+        return hash("".join(self.__dict__))
+
 
 
 class RequestDataclass(BaseModel):
@@ -54,7 +67,7 @@ class RequestDataclass(BaseModel):
     options: Union[OptionsDTO, None] = None
 
 
-def generate_response(inputs: str, parameters: lmi.GenerationParameters):
+async def generate_response(inputs: Union[str, List[str]], parameters: lmi.GenerationParameters):
     return NotImplementedError()
 
 @app.post("/generate")
@@ -83,7 +96,6 @@ async def generate(request: RequestDataclass):
    More on that: https://huggingface.co/docs/api-inference/detailed_parameters#text-generation-task
     
     """
-    print(request)
     parameters = lmi.GenerationParameters(
             temperature=request.parameters.temperature,
             top_p=request.parameters.top_p,
@@ -94,12 +106,61 @@ async def generate(request: RequestDataclass):
             do_sample=request.parameters.do_sample,
             stop_token=request.parameters.stop_token
     )
-    generated = generate_response(inputs=request.inputs, parameters=parameters)[0]
-    response = [{"generated_text": request.inputs + generated}]
-    return JSONResponse(response)
+    future = asyncio.get_running_loop().create_future()
+    await GENERATE_QUEUE.put([future, request.inputs, parameters])
+    output = await future
+    output = request.inputs + output if request.parameters.return_full_text else output
+    response = {"generated_text": output}
+    return JSONResponse([response])
 
-   
 
+
+
+
+async def batch_generating_loop():
+
+    while True:
+        await asyncio.sleep(REQUESTS_BATCH_PROCESS_WINDOWS_SECONDS)
+        requests = {}
+        parameters = []
+        for _ in range(REQUESTS_BATCH_SIZE):
+            try:
+                request = GENERATE_QUEUE.get_nowait()
+            except asyncio.QueueEmpty:
+                pass
+            else:
+                requests.setdefault(request[2], []).append(request)
+                parameters.append(request[2])
+
+        if not requests:
+            continue
+
+        parameters_usage_counter = Counter(parameters)
+
+        most_used_parameters = max(
+                parameters_usage_counter, 
+                key=parameters_usage_counter.get
+        )
+        param_requests = requests.pop(most_used_parameters)
+
+        for rescheduled_request in requests.values():
+            await GENERATE_QUEUE.put(rescheduled_request)
+
+        responses = await generate_response(
+                inputs=[request[1] for request in param_requests],
+                parameters=most_used_parameters
+        )
+
+        for request, generated_response in zip(param_requests, responses):
+            request[0].set_result(generated_response)
+
+
+
+
+
+@app.on_event("startup")
+async def startup_event():
+    asyncio.create_task(batch_generating_loop())
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -108,6 +169,6 @@ if __name__ == "__main__":
     parser.add_argument("--lmi", type=str)
     args = parser.parse_args()
     lmi_module = importlib.import_module(args.lmi)
-    generate_response = lmi_module.generator
+    generate_response = lmi_module.agenerator
 
     uvicorn.run(app, host=args.host, port=args.port)
