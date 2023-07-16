@@ -137,12 +137,13 @@ async def batch_generating_loop():
     loop = asyncio.get_running_loop()
     while loop.is_running():
         await asyncio.sleep(REQUESTS_BATCH_PROCESS_WINDOW_SECONDS)
+
         requests = {}
         for _ in range(REQUESTS_BATCH_SIZE):
             try:
                 request = GENERATE_QUEUE.get_nowait()
             except asyncio.QueueEmpty:
-                pass
+                break
             else:
                 if not await request.http_request.is_disconnected():
                     requests.setdefault(request.parameters, []).append(request)
@@ -156,6 +157,7 @@ async def batch_generating_loop():
                 parameters_usage_counter, 
                 key=parameters_usage_counter.get
         )
+
         param_requests = requests.pop(most_used_parameters)
 
         for rescheduled_request in requests.values():
