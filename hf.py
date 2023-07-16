@@ -123,7 +123,6 @@ async def batch_generating_loop():
     while True:
         await asyncio.sleep(REQUESTS_BATCH_PROCESS_WINDOW_SECONDS)
         requests = {}
-        parameters = []
         for _ in range(REQUESTS_BATCH_SIZE):
             try:
                 request = GENERATE_QUEUE.get_nowait()
@@ -131,12 +130,11 @@ async def batch_generating_loop():
                 pass
             else:
                 requests.setdefault(request[2], []).append(request)
-                parameters.append(request[2])
 
         if not requests:
             continue
 
-        parameters_usage_counter = Counter(parameters)
+        parameters_usage_counter = Counter(requests.keys())
 
         most_used_parameters = max(
                 parameters_usage_counter, 
@@ -147,7 +145,7 @@ async def batch_generating_loop():
         for rescheduled_request in requests.values():
             await GENERATE_QUEUE.put(rescheduled_request)
 
-        responses = await generate_response(
+        await generate_response(
                 inputs=[request[1] for request in param_requests],
                 parameters=most_used_parameters,
                 callback=[request[0].set_result for request in param_requests],
