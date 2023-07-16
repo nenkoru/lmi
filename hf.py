@@ -14,7 +14,7 @@ from pydantic import BaseModel
 import lmi
 
 
-REQUESTS_BATCH_PROCESS_WINDOW_SECONDS = 0.1
+REQUESTS_BATCH_PROCESS_WINDOW_SECONDS = 0.5
 REQUESTS_BATCH_SIZE = 50
 GENERATE_QUEUE = asyncio.Queue()
 
@@ -143,7 +143,8 @@ async def batch_generating_loop():
             except asyncio.QueueEmpty:
                 pass
             else:
-                requests.setdefault(request.parameters, []).append(request)
+                if not await request.http_request.is_disconnected():
+                    requests.setdefault(request.parameters, []).append(request)
 
         if not requests:
             continue
