@@ -14,7 +14,7 @@ from pydantic import BaseModel
 import lmi
 
 
-REQUESTS_BATCH_PROCESS_WINDOWS_SECONDS = 0.5
+REQUESTS_BATCH_PROCESS_WINDOW_SECONDS = 0.5
 REQUESTS_BATCH_SIZE = 50
 GENERATE_QUEUE = asyncio.Queue()
 
@@ -121,7 +121,7 @@ async def generate(request: RequestDataclass):
 async def batch_generating_loop():
 
     while True:
-        await asyncio.sleep(REQUESTS_BATCH_PROCESS_WINDOWS_SECONDS)
+        await asyncio.sleep(REQUESTS_BATCH_PROCESS_WINDOW_SECONDS)
         requests = {}
         parameters = []
         for _ in range(REQUESTS_BATCH_SIZE):
