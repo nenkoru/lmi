@@ -134,7 +134,8 @@ async def generate(request: RequestDataclass, http_request: Request):
 
 async def batch_generating_loop():
 
-    while True:
+    loop = asyncio.get_running_loop()
+    while loop.is_running():
         await asyncio.sleep(REQUESTS_BATCH_PROCESS_WINDOW_SECONDS)
         requests = {}
         for _ in range(REQUESTS_BATCH_SIZE):
