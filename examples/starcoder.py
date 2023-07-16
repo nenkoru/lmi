@@ -1,4 +1,6 @@
-from typing import Union, Iterable, List
+import asyncio
+
+from typing import Union, Iterable, List, Callable
 from collections.abc import Iterable as abc_Iterable
 
 import transformers
@@ -52,15 +54,26 @@ class AsyncCT2Generator:
     async def generate(
             self, 
             *args,
-            inputs: str,
+            inputs: Union[str, List[str]],
             parameters: "lmi.GenerationParameters",
+            callback: Union[Callable, List[Callable]] = None,
             **kwargs
             ) -> Union[str, List[str]]:
 
-        encoded_prompt = self._tokenizer.encode(inputs)
-        tokens = self._tokenizer.convert_ids_to_tokens(encoded_prompt)
-        results = await self._generator.generate_batch(
-                [tokens],
+        if not isinstance(inputs, List):
+            inputs = [inputs]
+
+        if not isinstance(callback, List) and callback is not None:
+            callback = [callback]
+
+        if callback is not None:
+            assert len(inputs) == len(callback), "Inputs do not equal to callbacks"
+
+
+        encoded_prompts = [self._tokenizer.encode(input) for input in inputs]
+        tokens = [self._tokenizer.convert_ids_to_tokens(encoded_prompt) for encoded_prompt in encoded_prompts]
+        async_results = self._generator.generate_batch(
+                tokens,
                 max_length=parameters.max_tokens,
                 include_prompt_in_result=False,
                 sampling_topp=parameters.top_p,
@@ -69,8 +82,22 @@ class AsyncCT2Generator:
                 end_token=parameters.stop_token,
                 asynchronous=True,
         )
-        texts = [self._tokenizer.decode(result.sequences_ids[0]) for result in results]
-        return texts
+        print(async_results)
+        if callback is not None:
+            async def wrap_to_decode(result):
+                result = await result
+                return self._tokenizer.decode(result.sequences_ids[0])
+
+            async def poll_wait_for_completion(
+                    async_result: ctranslate2.AsyncGenerationResult, 
+                    poll_interval=0.1
+                    ):
+                while not async_result.done():
+                    await asyncio.sleep(poll_interval)
+                return async_result.result()
+
+            for async_result, _callback in zip(async_results, callback):
+                _callback(wrap_to_decode(poll_wait_for_completion(async_result)))
 
 
 

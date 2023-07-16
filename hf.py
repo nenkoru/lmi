@@ -14,8 +14,8 @@ from pydantic import BaseModel
 import lmi
 
 
-REQUESTS_BATCH_PROCESS_WINDOWS_SECONDS = 5
-REQUESTS_BATCH_SIZE = 5
+REQUESTS_BATCH_PROCESS_WINDOWS_SECONDS = 0.5
+REQUESTS_BATCH_SIZE = 50
 GENERATE_QUEUE = asyncio.Queue()
 
 app = FastAPI(
@@ -109,6 +109,7 @@ async def generate(request: RequestDataclass):
     future = asyncio.get_running_loop().create_future()
     await GENERATE_QUEUE.put([future, request.inputs, parameters])
     output = await future
+    output = await output
     output = request.inputs + output if request.parameters.return_full_text else output
     response = {"generated_text": output}
     return JSONResponse([response])
@@ -148,19 +149,15 @@ async def batch_generating_loop():
 
         responses = await generate_response(
                 inputs=[request[1] for request in param_requests],
-                parameters=most_used_parameters
+                parameters=most_used_parameters,
+                callback=[request[0].set_result for request in param_requests],
         )
-
-        for request, generated_response in zip(param_requests, responses):
-            request[0].set_result(generated_response)
-
-
-
 
 
 @app.on_event("startup")
 async def startup_event():
     asyncio.create_task(batch_generating_loop())
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
