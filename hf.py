@@ -14,7 +14,7 @@ from pydantic import BaseModel
 import lmi
 
 
-REQUESTS_BATCH_PROCESS_WINDOW_SECONDS = 0.5
+REQUESTS_BATCH_PROCESS_WINDOW_SECONDS = 0.1
 REQUESTS_BATCH_SIZE = 50
 GENERATE_QUEUE = asyncio.Queue()
 
@@ -23,6 +23,14 @@ app = FastAPI(
     description="A drop-in replacement for HuggingFace API definition",
     version="0.1.0",
 )
+
+
+@dataclass
+class GenerationRequestDataclass:
+    http_request: Request
+    future: asyncio.Future
+    parameters: lmi.GenerationParameters
+    inputs: str
 
 
 class ParametersDTO(BaseModel):
@@ -71,7 +79,7 @@ async def generate_response(inputs: Union[str, List[str]], parameters: lmi.Gener
     return NotImplementedError()
 
 @app.post("/generate")
-async def generate(request: RequestDataclass):
+async def generate(request: RequestDataclass, http_request: Request):
     """Generate text using a model defined in LMI.
 
     The request should follow the following schema:
@@ -107,7 +115,13 @@ async def generate(request: RequestDataclass):
             stop_token=request.parameters.stop_token
     )
     future = asyncio.get_running_loop().create_future()
-    await GENERATE_QUEUE.put([future, request.inputs, parameters])
+    generation_request = GenerationRequestDataclass(
+            future=future, 
+            http_request=http_request, 
+            inputs=request.inputs, 
+            parameters=parameters
+    )
+    await GENERATE_QUEUE.put(generation_request)
     output = await future
     output = await output
     output = request.inputs + output if request.parameters.return_full_text else output
@@ -129,7 +143,7 @@ async def batch_generating_loop():
             except asyncio.QueueEmpty:
                 pass
             else:
-                requests.setdefault(request[2], []).append(request)
+                requests.setdefault(request.parameters, []).append(request)
 
         if not requests:
             continue
@@ -146,9 +160,9 @@ async def batch_generating_loop():
             await GENERATE_QUEUE.put(rescheduled_request)
 
         await generate_response(
-                inputs=[request[1] for request in param_requests],
+                inputs=[request.inputs for request in param_requests],
                 parameters=most_used_parameters,
-                callback=[request[0].set_result for request in param_requests],
+                callback=[request.future.set_result for request in param_requests],
         )
 
 

@@ -90,7 +90,7 @@ class AsyncCT2Generator:
 
             async def poll_wait_for_completion(
                     async_result: ctranslate2.AsyncGenerationResult, 
-                    poll_interval=0.1
+                    poll_interval=0.01
                     ):
                 while not async_result.done():
                     await asyncio.sleep(poll_interval)
