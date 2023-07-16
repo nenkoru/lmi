@@ -38,6 +38,40 @@ class CT2Generator:
         texts = [self._tokenizer.decode(result.sequences_ids[0]) for result in results]
         return texts
 
+class AsyncCT2Generator:
+    """Implements LMIProtocol."""
+
+    def __init__(self, 
+                 *,
+                 generator: "ctranslate2.Generator", 
+                 tokenizer: "transformers.AutoTokenizer"
+                 ):
+        self._generator = generator
+        self._tokenizer = tokenizer
+
+    async def generate(
+            self, 
+            *args,
+            inputs: str,
+            parameters: "lmi.GenerationParameters",
+            **kwargs
+            ) -> Union[str, List[str]]:
+
+        encoded_prompt = self._tokenizer.encode(inputs)
+        tokens = self._tokenizer.convert_ids_to_tokens(encoded_prompt)
+        results = await self._generator.generate_batch(
+                [tokens],
+                max_length=parameters.max_tokens,
+                include_prompt_in_result=False,
+                sampling_topp=parameters.top_p,
+                sampling_topk=parameters.top_k,
+                sampling_temperature=parameters.temperature,
+                end_token=parameters.stop_token,
+                asynchronous=True,
+        )
+        texts = [self._tokenizer.decode(result.sequences_ids[0]) for result in results]
+        return texts
+
 
 
 _ct2_generator = ctranslate2.Generator(
@@ -52,3 +86,10 @@ generator = CT2Generator(
         generator=_ct2_generator, 
         tokenizer=_tokenizer,
 ).generate
+
+agenerator = AsyncCT2Generator(
+        generator=_ct2_generator, 
+        tokenizer=_tokenizer,
+).generate
+
+
