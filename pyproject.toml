@@ -1,0 +1,19 @@
+[tool.poetry]
+name = "lmi"
+version = "0.1.0"
+description = "A drop-in replacements for OpenAI, HuggingFace APIs with determined interface of interacting with LLM, as WSGi or ASGI defines theirs."
+authors = ["Chernenko Ruslan <ractyfree@gmail.com>"]
+license = "MIT"
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.9"
+fastapi = "^0.100.0"
+httpx = "^0.24.1"
+pydantic = "^2.0.3"
+uvicorn = "^0.23.0"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
