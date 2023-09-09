@@ -31,6 +31,7 @@ class CT2Generator:
         results = self._generator.generate_batch(
                 [tokens],
                 max_length=parameters.max_tokens,
+                repetition_penalty=parameters.repetition_penalty,
                 include_prompt_in_result=False,
                 sampling_topp=parameters.top_p,
                 sampling_topk=parameters.top_k,
@@ -74,12 +75,13 @@ class AsyncCT2Generator:
         tokens = [self._tokenizer.convert_ids_to_tokens(encoded_prompt) for encoded_prompt in encoded_prompts]
         async_results = self._generator.generate_batch(
                 tokens,
+                batch_type="tokens",
                 max_length=parameters.max_tokens,
                 include_prompt_in_result=False,
                 sampling_topp=parameters.top_p,
-                sampling_topk=parameters.top_k,
+                sampling_topk=parameters.top_k if parameters.top_k else 1,
                 sampling_temperature=parameters.temperature,
-                end_token=parameters.stop_token,
+                end_token=[0],
                 asynchronous=True,
         )
         print(async_results)
@@ -90,7 +92,7 @@ class AsyncCT2Generator:
 
             async def poll_wait_for_completion(
                     async_result: ctranslate2.AsyncGenerationResult, 
-                    poll_interval=0.1
+                    poll_interval=0.01
                     ):
                 while not async_result.done():
                     await asyncio.sleep(poll_interval)
@@ -102,12 +104,13 @@ class AsyncCT2Generator:
 
 
 _ct2_generator = ctranslate2.Generator(
-        "../starcoderplus_ct2_int8", 
+        "../wizardcoder_15b_ct2_int8",
         device="cuda", 
-        compute_type="int8"
+        compute_type="auto",
+        inter_threads=4
 )
 _tokenizer = transformers.AutoTokenizer.from_pretrained(
-        "bigcode/starcoderplus"
+        "WizardLM/WizardCoder-15B-V1.0",
 )
 generator = CT2Generator(
         generator=_ct2_generator, 

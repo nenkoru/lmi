@@ -1,20 +1,22 @@
+import logging
 import importlib
 import argparse
 import asyncio
 
-from typing import Union, List
+from typing import Union, List, Optional
 from dataclasses import dataclass
 from collections import Counter
 
 import uvicorn
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, status
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 import lmi
 
 
-REQUESTS_BATCH_PROCESS_WINDOW_SECONDS = 0.5
+REQUESTS_BATCH_PROCESS_WINDOW_SECONDS = 0.2
 REQUESTS_BATCH_SIZE = 50
 GENERATE_QUEUE = asyncio.Queue()
 
@@ -34,24 +36,32 @@ class GenerationRequestDataclass:
 
 
 class ParametersDTO(BaseModel):
-    top_k: int = 1
-    top_p: float = 0.95
+    best_of: Optional[int] = 0
+    truncate: Optional[int] = 0
+    typical_p: Optional[float] = 0.
+    watermark: bool = False
+    decoder_input_details: bool = False
+    details: bool = True
+    seed: Optional[int] = 0
+    top_k: Optional[int] = 1
+    top_p: Optional[float] = 0.95
     temperature: float = 1
-    repetition_penalty: float = None
+    repetition_penalty: Optional[float] = 1.
     max_new_tokens: int = None
     max_time: float = None
     return_full_text: bool = True
     num_return_sequences: int = 1
     do_sample: bool = True
-    stop_token: Union[str, None] = None
+    stop: Optional[Union[str, List[str]]] = None
 
     def __hash__(self):
         return hash("".join(self.__dict__))
 
 
 class OptionsDTO(BaseModel):
-    use_cache: bool
-    wait_for_model: bool
+    use_cache: Optional[bool] = False
+    wait_for_model: Optional[bool] = False
+    stream: Optional[bool] = False
 
     def __hash__(self):
         return hash("".join(self.__dict__))
@@ -78,7 +88,7 @@ class RequestDataclass(BaseModel):
 async def generate_response(inputs: Union[str, List[str]], parameters: lmi.GenerationParameters):
     return NotImplementedError()
 
-@app.post("/generate")
+@app.post("/")
 async def generate(request: RequestDataclass, http_request: Request):
     """Generate text using a model defined in LMI.
 
@@ -112,7 +122,7 @@ async def generate(request: RequestDataclass, http_request: Request):
             max_tokens=request.parameters.max_new_tokens,
             return_prompt=request.parameters.return_full_text,
             do_sample=request.parameters.do_sample,
-            stop_token=request.parameters.stop_token
+            stop_token=request.parameters.stop
     )
     future = asyncio.get_running_loop().create_future()
     generation_request = GenerationRequestDataclass(
